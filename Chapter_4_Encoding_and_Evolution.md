@@ -20,6 +20,8 @@ These are my notes from the fourth chapter of Martin Kleppmann's: Designing Data
 
 * * *
 
+## Introduction
+
 We should aim to build systems that make it easy to adapt to change: **Evolvability.**
 
 **Rolling upgrade:** Deploying a new version to a few nodes at a time, checking whether the new version is running smoothly, and gradually working your way through all the nodes.
@@ -30,10 +32,14 @@ With rolling upgrades, new and old versions of the code, and old and new data fo
 
 **Forward compatibility:** Older code can read data written by newer code. This is trickier because it requires older code to ignore additions made by a newer version of the code.
 
+----
+
 Programs work with data that have at least 2 different representations:
 
 - In memory data structures: optimized for efficient access and CPU manipulation
 - Sequence of bytes (e.g. JSON) for transmitting over the network.
+
+---- 
 
 We need some kind of translation between the two representations:
 
@@ -101,11 +107,15 @@ A server can also be a client to another service. E.g. a web app server is usual
 
 A difference between a web app service and a database service is that there's usually tighter restriction on the former.
 
+----
+
 *Service-oriented architecture (SOA)*: Decomposing a large application into smaller components by area of functionality.
 
 **Web Services**: If a service is communicated with using HTTP as the underlying protocol, it is called a *web service.* Two approaches to web services are *REST* and *SOAP* (Simple Object Access Protocol).
 
 **RPC:** The RPC model tries to make a request to a remote network look the same as calling a function or method, within the same process ( *location transparency -* In computer networks, location transparency is the use of names to identify network resources, rather than their actual location).
+
+----
 
 There are certain problems with this approach though, which can be summarized under the fundamental fact that network calls are different from function calls. E.g.:
 
@@ -115,6 +125,8 @@ There are certain problems with this approach though, which can be summarized un
 - The client and service may be implemented in different languages, so the RPC library would need to translate datatypes from one language to another. This is tricky because not all languages have the same types. This process does not exist in a single process written in a single language.
 
 Despite these problems, RPC isn't going away. The new generation of RPC frameworks are explicit about the difference between a remote request and a local function call such as Finagle, [Rest.li](http://rest.li/) and GRPC.
+
+----
 
 The main focus of RPC frameworks is on requests between services owned by the same organization, typically within the same datacenter.
 

@@ -19,6 +19,8 @@ SQL is the best known data model today. Two of the earlier competitors of this m
 - Some specialized query operations not well supported by the relational model.
 - Frustration with the restrictiveness of relational schemas, and a desire for a more dynamic and expressive data model.
 
+----
+
 NoSQL Databases are in two forms:
 
 - **Document databases**: Targets use cases where data comes in self-contained documents and relationships between one document and another are rare

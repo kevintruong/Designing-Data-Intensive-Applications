@@ -42,12 +42,15 @@ My notes from the fifth chapter of Martin Kleppmann's book: Designing Data Inten
         - [Version Vectors](#version-vectors)
 
 * * *
+### Introduction 
 
 Replication involves keeping a copy of the same data on multiple machines connected via a network. Reasons for this involve:
 
 - Increasing the number of machines that can handle failed requests - Leads to increased read throughput.
 - To allow a system continue working in the event of failed parts - Leads to increased availability.
 - To keep data geographically close to users - Reduced latency.
+
+----
 
 The challenge with replication lies in handling changes to replicated data. Three algorithms for replicating changes between nodes:
 
@@ -98,6 +101,8 @@ Two options that are not sufficient are:
 - Just copying data files from one node to another. The data in the leader is always updating and a copy will see different versions at different points in time.
 - Locking the database (hence making it unavailable for writes). This will go against the goal of high availability.
 
+---- 
+
 There's an option that works without downtime which involves:
 
 1.  Taking a consistent snapshot of the leader's db at some point in time. It's possible to do this without taking a lock on the entire db. Most databases have this feature.
@@ -123,6 +128,8 @@ This is trickier: One of the nodes needs to be promoted to be the new leader, cl
 2.  *Choosing a new leader:* This can be done through an election process (where the new leader is chosen by a majority of the remaining replicas), or a new leader could be appointed by a previously elected *controller node.* The best candidate for leadership is typically the one with the most up-to-date data changes from the old leader (to minimize data loss)
 3.  *Reconfiguring the system to use the new leader:* Clients need to send write requests to the new leader, and followers need to process the replication log from the new leader. The system also needs to ensure that when the old leader comes back, it does not believe that it is still the leader. It must become a follower.
 
+---- 
+
 There are a number of things that can go wrong during the failover process:
 
 - For asynchronous systems, we may have to discard some writes if they have not been processed on a follower at the time of the leader failure. This violates clients' durability expectations.
@@ -140,11 +147,15 @@ Several replication methods are used in leader-based replication. These include:
 - If statements use an autoincrementing column, they must be executed in exactly the same order on each replica, or else they may have a different effect. This can be limiting when executing multiple concurrent transactions, as statements without any causal dependencies can be executed in any order.
 - Statements with side effects (e.g. triggers, stored procedures) may result in different side effects occurring on each replica, unless the side effects are deterministic.
 
+---- 
+
 Some databases work around this issues by requiring transactions to be deterministic, or configuring the leader to replace nondeterministic function calls with a fixed return value.
 
 **b) Write-ahead log (WAL) shipping:** The log is an append-only sequence of bytes containing all writes to the db. Besides writing the log to disk, the leader can also send the log to its followers across the network.
 
 The main disadvantage of this approach is that the log describes the data on a low level. It details which bytes were changed in which disk blocks. This makes the replication closely coupled to the storage engine. Meaning that if the storage engine changes in another version, we cannot have different versions running on the leader and the followers, which prevents us from making zero-downtime upgrades.
+
+----
 
 **c) Logical (row-based) log replication:** This logs the changes that have occurred at the granularity of a row. Meaning that:
 
@@ -153,6 +164,8 @@ The main disadvantage of this approach is that the log describes the data on a l
 - For an updated row, it contains enough information to identify the updated row, and the new values of all columns.
 
 This decouples the logical log from the storage engine internals. Thus, it makes it easier for external applications (say a data warehouse for offline analysis, or for building custom indexes and caches) to parse. This technique is called *change data capture.*
+
+----
 
 **d) Trigger-based replication:** This involves handling replication within the application code. It provides flexibility in dealing with things like: replicating only a subset of data, conflict resolution logic, replicating from one kind of database to another etc. *Trigger* and *Stored procedures* provide this functionality. This method has more overhead than other replication methods, and is more prone to bugs and limitations than the database's built-in replication.
 
@@ -176,11 +189,15 @@ There's an extra complication with this if the same user is accessing my service
 - We can't use the last update time as suggested earlier, since the code on one device will not know about what updates have happened on the other device.
 - If replicas are distributed across different datacenters, each device might hit different data datacenters which will have followers that may or may not have received the write. A solution to this is to force that all the reads from a user must be routed to the leader. This will of course introduce the complexity of routing all requests from all of a user's devices to the same datacenter.
 
+----
+
 **b) Monotonic Reads:** An anomaly that can occur when reading from asynchronous followers is that it's possible for a user to see things *moving backward in time.* Imagine a scenario where a user makes the same read multiple times, and each read request goes to a different follower. It's possible that a write has appeared on some followers, and not on others. Time might seem to go backwards sometimes when the user sees old data, after having read newer data.
 
 Monotonic reads is a consistency level that guarantees that a user will not read older data after having previously read newer data. This guarantee is stronger than eventual consistency, but weaker than strong consistency.
 
 A solution to this is that every read from a user should go to the same replica. The hash of a user's id could be used to determine what replica to go to.
+
+----
 
 **c) Consistent Prefix Reads:** Another anomaly that can occur as a result of replication lag is a violation of causality. Meaning that a sequence of writes that occur in one order might be read in another order. This can especially happen in distributed databases where different partitions operate independently and there's no global ordering of writes. *Consistent prefix reads* is a guarantee that prevents this kind of problem.
 
@@ -201,9 +218,13 @@ Multi-leader/Master-master/Active-Active replication allows more than one node t
 - **Multi-datacenter operation:** Here, each datacenter can have its own leader. This has a better performance for writes, since every write can be processed in its local datacenter (as opposed to being transmitted to a remote datacenter) and replicated asynchronously to other datacenters. It also means that if a datacenter is down, each data center can continue operating independently of the others.
     
     Multi-leader replication has the disadvantage that the same data may be concurrently modified in two different datacenters, and so there needs to be a way to handle conflicts.
-    
+  
+----
+
 - **Clients with offline operation:** Some applications need to work even when offline. Say mobile apps for example, apps like Google Calendar need to accept writes even when the user is not connected to the internet. These writes are then asynchronously replicated to other nodes when the user is connected again. In this setup, each device stores data in its local database. Meaning that each device essentially acts like a leader. CouchDB is designed for this mode of operation apparently.
-    
+
+----
+
 - **Collaborative Editing:** Real-time collaborative editing applications like Confluence and Google Docs allow several people edit a document at the same time. This is also a database replication problem. Each user that edits a document has their changes saved to a local replica, from which it is then replicated asynchronously.
     
     For faster collaboration, the unit of change can be a single keystroke. That is, after a keystroke is saved, it should be replicated.
@@ -240,6 +261,8 @@ The most appropriate conflict resolution method may depend on the application, a
 
 - *On write:* When the database detects a conflict in the log of replicated changes, it calls the conflict handler. The handler typically runs in a background process and must execute quickly. It has no user interaction.
 - *On Read:* Conflicting writes are stored. However, when the data is read, the multiple versions of the data are returned to the user, either for the user to resolve them or for automatic resolution.
+
+----
 
 Automatic conflict resolution is a difficult problem, but there are some research ideas being used today:
 
@@ -288,6 +311,8 @@ The parameters *n, w,* and *r* are typically configurable. A common choice is to
 
 Note that *n* does not always refer to the number of nodes in the cluster, it may just be the number of nodes that any given value must be stored on. This allows datasets to be partitioned. Partitioning is discussed in Chapter 5.
 
+----
+
 Notes:
 
 - With *w* and *r* being less than *n,* we can still process writes if a node is unavailable.
@@ -300,6 +325,8 @@ Quorums don't necessarily have to be majorities i.e. *w + r > n.* What matters i
 We could also set *w* and *r* to smaller numbers, so that *w + r ≤ n.* With this, reads and writes are still sent to n nodes, but a smaller number of successful responses is required for the operation to succeed. However, you are also more likely to read stale values, as it's more likely that a read did not include the node with the latest value.
 
 The upside of the approach though is that it allows lower latency and higher availability: if there's a network interruption and many replicas become unreachable, there's a higher chance that reads and writes can still be processed.
+
+----
 
 Even if we configure our database such that *w + r > n* , there are still edge cases where stale values may be returned. Possible scenarios are:
 
@@ -383,6 +410,8 @@ It works like this:
 - When a client wants to write a new value, it returns the last version number it received in the prior step alongside the write.
 - If the version number being passed with a write is higher than the version number of other values in the db, it means the new write is aware of those values at the time of the write (since it was returned from the prior read), and can overwrite all values with that version number or below.
 - If there are higher version numbers, the database must keep all values with the higher version number (because those values are concurrent with the incoming write- it did not know about them).
+
+----
 
 Example scenario:
 
