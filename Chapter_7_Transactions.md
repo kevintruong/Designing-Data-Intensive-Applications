@@ -40,6 +40,7 @@ My notes from Chapter 7 of 'Designing Data-Intensive Applications' by Martin Kle
 * * *
 
 ### Introduction 
+
 Transactions were created to simplify the programming model for applications accessing a database.
 
 All the reads and writes in a transaction are executed as one operation: either the entire operation succeeds (*commit*) or it fails (*abort*, *rollback*).
@@ -58,11 +59,16 @@ However, different databases have different implementations of ACID, and there a
 
 Systems that don't meet the ACID criteria are sometimes called *BASE: Basically Available, Soft state,* and *Eventual Consistency,* which can mean almost anything you want.
 
+----
+
 **Atomicity**
 
 The word *atomic* in general means something that cannot be broken down into smaller parts.
 
 In the context of a database transaction, atomicity refers to the ability to abort a transaction on error and have all the writes from the transaction discarded.
+
+----
+
 
 **Consistency**
 
@@ -72,6 +78,8 @@ It is up to the application to define what those invariants are so the transacti
 
 Unlike the other terms, consistency is a property of the application not the database, but transactions enforce those rules. These invariants are typically enforced through database constraints like uniqueness.
 
+----
+
 **Isolation**
 
 Isolation is the property of ensuring that concurrently executing transactions are isolated from each other i.e. they don't step on each other's toes. They pretend like they don't know about each other.
@@ -80,9 +88,13 @@ Isolation ensures that when concurrently executing transactions are committed, t
 
 In practice though, serializable isolation is rarely used because of the performance penalty it carries.
 
+----
+
 **Durability**
 
 Durability is the promise that when a transaction is committed successfully, any data that has been written will not be forgotten, even in the event of a hardware fault or database crashes.
+
+----
 
 In single node databases, durability means that the data has been written to nonvolatile storage like a hard drive or SSD. It also usually involves a write-ahead log or similar which helps with recovery in case the data structures on disk are corrupted.
 
@@ -98,6 +110,8 @@ We need a way to determine which read and write operations belong to the same tr
 
 In relational databases, this is done based on the client's TCP connection to the database server: on any particular connection, everything between BEGIN TRANSACTION and a COMMIT is considered to be part of the same transaction.
 
+----
+
 **Single-object writes**
 
 Atomicity and isolation also apply when a single object is being changed. E.g.
@@ -112,6 +126,8 @@ Atomicity can be implemented by using a log for crash recovery, while isolation 
 
 These single object operations are useful, but are not transactions in the typical sense of the word. A transaction is generally considered as a mechanism for grouping multiple operations on multiple objects into a single unit of execution.
 
+----
+
 **The need for multi-object transactions**
 
 Some distributed datastores have abandoned multi-object transactions because they are difficult to implement across partitions, and can hinder performance when high availability/performance is required.
@@ -123,6 +139,8 @@ There are some use cases where multi-object operations need to be coordinated e.
 - In databases with secondary indexes (i.e. almost everything except pure key-value stores), the indexes also need to be updated every time a value is changed. That is, the indexes needs to be updated with the new records.
 
 These can be implemented without transactions, but error handling is more complex without atomicity and isolation (to prevent concurrency problems).
+
+----
 
 **Handling Errors And Aborts**
 
@@ -138,9 +156,15 @@ Concurrency issues (e.g. race conditions) happen when one transaction reads data
 
 Concurrency issues are often hard to reproduce or test.
 
+----
+
 *Transaction Isolation* is the means by which databases typically try to hide concurrency issues from application developers.
 
+----
+
 *Serializable Isolation* is the ideal isolation required, as the database guarantees that transactions have the same effect as if they ran serially (one after another). However, this form has a performance cost which most databases don't want to pay. As a result, databases use weaker levels of isolation which prevent against some concurrency issues, but not all.
+
+----
 
 Concurrency bugs caused by weak transaction isolation are not just theoretical. They are real issues which have led to loss of money, data corruption, and even an investigation by financial auditors. (e.g. [https://bitcointalk.org/index.php?topic=499580](https://bitcointalk.org/index.php?topic=499580))
 
@@ -178,6 +202,8 @@ A *read skew* means that you might read the value of an object in one transactio
 
 Thus, a long running read-only transaction can have situations where the value of an object or multiple objects changes between when the transaction starts and when it ends, which can lead to inconsistencies.
 
+----
+
 Basically, an example flow for this kind of anomaly is this:
 
 - Transaction A begins and reads objects from DB
@@ -186,10 +212,14 @@ Basically, an example flow for this kind of anomaly is this:
 
 "A Fuzzy or Non-Repeatable Read occurs when a value that has been read by a still in-flight transaction is overwritten by another transaction. Even without a second read of the value actually occurring this can still cause database invariants to be violated" - Source: [https://blog.acolyer.org/2016/02/24/a-critique-of-ansi-sql-isolation-levels/](https://blog.acolyer.org/2016/02/24/a-critique-of-ansi-sql-isolation-levels/)
 
+----
+
 Read skew is considered acceptable under read committed isolation, but some situations cannot tolerate that temporary inconsistency:
 
 - **Backups:** A backup requires making a copy of a database which can take long hours. During this time, writes will be made to the database. It's possible that some parts of the backup will contain an older version of the data, and other parts will have a newer version. These inconsistencies will become permanent on the database level.
 - **Analytic queries and integrity checks:** Long running analytics queries could end up returning incorrect data if the data in the db has changed over the course of the run.
+
+----
 
 To solve this problem, *Snapshot isolation* is commonly used. The main idea is that each transaction reads a *consistent snapshot* of the database - that is, *a transaction will only see all the data that was committed in the database at the start of the transaction.* Even if another transaction changes the data, it won't be seen by the current transaction.
 
@@ -201,11 +231,15 @@ A core principle of snapshot isolation is this:
 
 *Readers never block writers, and writers never block readers.*
 
+----
+
 Implementations of snapshot isolation typically use write locks to prevent dirty writes, but have an alternate mechanism for preventing dirty reads.
 
 Write locks mean that a transaction that makes a write to an object can block the progress of another transaction that makes a write to the same object.
 
 To implement snapshot isolation, databases potentially keep multiple different committed version of the same object. Due to the fact that it maintains several versions of an object side by side, the technique is known as *multi-version concurrency control (MVCC).*
+
+----
 
 For a database providing only read committed isolation, we would only need to keep two versions of an object: the committed version and the overwritten-but-uncommitted version. However, with snapshot isolation, we keep different versions of the same object. The scenario below explains why:
 
@@ -216,7 +250,11 @@ That's why we could have multiple versions of the same object.
 
 Note that storage engines that support snapshot isolation typically use MVCC for their read committed isolation level as well.
 
+----
+
 *MVCC-based snapshot isolation is typically implemented* by given each transaction a unique, always-increasing transaction ID. Any writes to the database by a transaction are tagged with the transaction ID of the writer. Each row in the table is tagged with a created\_by and deleted\_by field which has the transaction ID that performed the creation or deletion (when applicable).
+
+----
 
 The transaction IDs are used as follows:
 
@@ -249,11 +287,15 @@ The lost update problem mainly occurs when an application *reads* a value, *modi
 
 The key difference between this and a dirty write is that: *if you overwrite a value that has been committed, it's no longer a dirty write. A dirty write happens when in a transaction, you overwrite a value which has been updated in another uncommitted transaction.*
 
+----
+
 This can happen in different scenarios:
 
 - If a counter needs to be incremented. It requires reading the current value, calculating the new value, and writing back the updated value. If two transactions increment the counter by different values, one of those updates will be lost.
 - Making a local change to a complex value. E.g. Adding an element to a list within a JSON document.
 - Two users editing a wiki page at the same time, where each user's changed is saved by sending the entire page contents to the server, it will overwrite whatever is in the database.
+
+----
 
 A variety of solutions have been developed to deal with this scenario:
 
@@ -304,6 +346,8 @@ To recap the two race conditions we have treated so far:
     
 - *Lost Update:* If two transactions happen concurrently and another commit firsts, the later one could overwrite an update made by the earlier transaction, which could lead to lost changes. E.g. Incrementing a counter.
 
+----
+
 Another anomaly that can happen is a *Write skew.* Basically, if two transactions read from the same objects, and then update some of those objects (as different transactions may update different objects), a write skew can occur.
 
 Imagine a scenario where two transactions running concurrently first make a query, and then update a database object based on the result of the first query. The operations performed by the transaction to commit first may render the result of the query invalid for the later transaction.
@@ -313,6 +357,8 @@ These transactions may update different objects (so it's neither a dirty write n
 Database constraints like uniqueness and foreign key constraints may help to enforce this, but they're not always applicable.
 
 Serializable isolation helps to prevent this. However, if it's not available, one way of preventing this is to explicitly lock the rows that a transaction depends on. Unfortunately, if the original query returns no rows (say it's checking for the absence of rows matching a condition), we can't attach locks to anything
+
+----
 
 *Another example drummed up from my head:*
 
@@ -346,6 +392,8 @@ This idea only started being used in practice fairly recently, around 2007, when
 
 - RAM become cheap enough that it is now possible to fit an entire dataset in memory for many use cases. When the entire dataset needed for a transaction is stored in memory, transactions execute much *faster.*
 - They also realized that OLTP transactions are usually short and make only a small number of reads and writes. Unlike OLAP transactions which are typically run on a consistent snapshot, these transactions are short enough to be run one by one.
+
+----
 
 This approach is serial transaction execution is implemented in Datomic, Redis, and others.
 
@@ -401,6 +449,8 @@ The blocking of readers and writers is implemented by having a lock on each obje
 - If a transaction first reads and then writes to an object, it may upgrade its shared lock to an exclusive lock.
 - After a transaction has acquired the lock, it must continue to hold the lock until the end of the transaction.
 
+----
+
 Two-phase origin: First phase is acquiring the locks, second phase is when all the locks are released.
 
 If an exclusive lock already exists on an object, a transaction which wants to acquire a shared mode lock must wait for the lock to be released (when the transaction is aborted or committed), and vice versa.
@@ -435,11 +485,15 @@ Most of this chapter has been bleak, and has made it look like we either have se
 
 However, in 2008, Michael Cahill's PhD thesis introduced a new concept known as *serializable snapshot isolation.* It provides full serializability at only a small performance penalty compared to snapshot isolation.
 
+----
+
 The main idea here is that instead of holding locks on transactions, it allows transactions to continue to execute as normal until the stage where the transaction is about to commit, when it then decides whether the transaction executed in a serializable manner. This approach is known as *an optimistic concurrency control technique*.
 
 Optimistic in this sense means that instead of blocking if something potentially dangerous happens, transactions continue anyway, in the hope that everything will be fine. If everything isn't fine, it's only controlled at the time the transactions want to commit, after which it will be aborted. This approach differs from the *pessimistic technique* used in Two-phase locking.
 
 The pessimistic approach believes that if anything can go wrong, it's better to wait until the situation is safe again (using locks) before doing anything.
+
+----
 
 Optimistic concurrency control is an old idea, but in the right conditions (e.g. contention between transactions is not too high and there's enough spare capacity), they tend to perform better than pessimistic ones.
 
@@ -449,10 +503,14 @@ Optimistic concurrency control is an old idea, but in the right conditions (e.g.
 
 With write skew in snapshot isolation, the recurring pattern was this: a transaction reads some data from the database, examines the result of the query and takes some action based on the result of that query. However, the result from the original query may no longer be valid as at the time the transaction commits, because the data may have been modified in the meantime.
 
+----
+
 The database has to be able to detect situations in which a transaction may have acted on outdated premise and abort the transaction in that case. To do this, there are two cases to consider:
 
 - Detecting reads of a stale MVCC object version (uncommitted write occurred before the read).
 - Detecting writes that affect prior reads (the write occurs after the read).
+
+----
 
 **Detecting stale MVCC reads**
 
@@ -462,12 +520,16 @@ This means that if Transaction A reads a value when there are uncommitted writes
 
 To prevent this anomaly, a database needs to keep track of transactions which ignore another transaction's writes due to MVCC visibility rules. When the transaction that performed the read wants to commit, the database checks whether any of the ignored writes have been committed. If so, the transaction must be aborted.
 
+----
+
 Some of the reasons why it waits for the transaction to commit, rather than aborting a transaction when a stale read is detected are that:
 
 - The reading transaction might be a read-only transaction, in which case there's no risk of a write skew. The database has no way of knowing whether the transaction will later perform a write.
 - There's no guarantee that the transaction that performed the uncommitted write will actually commit, so the read may not be a stale one at the end.
 
 SSI avoids unnecessary aborts and thus preserves snapshot isolation's support for long-running reads from a consistent snapshot.
+
+----
 
 **Detecting writes that affect prior reads**
 
@@ -482,9 +544,3 @@ This also has the advantage over serial execution that it is not limited to the 
 Due to the fact that the rate of aborts will affect the performance of SSI, it requires that read-write transactions be fairly short, as long running ones are more likely to run into conflicts. Long running read-only transactions may be fine.
 
 However, note that SSI is likely to be less sensitive to slow transactions that two-phase locking or serial execution.
-
-[learning-diary](https://timilearning.com/tags/learning-diary/) [distributed-systems](https://timilearning.com/tags/distributed-systems/) [ddia](https://timilearning.com/tags/ddia/)
-
-To get notified when I write something new, you can [subscribe](https://feeds.feedburner.com/timilearning) to the RSS feed.
-
-[← Home](https://timilearning.com/)

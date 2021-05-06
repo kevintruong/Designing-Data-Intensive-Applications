@@ -21,6 +21,7 @@ My notes from Chapter 6 of 'Designing Data-Intensive Applications by Martin Klep
 * * *
 
 ### Introduction 
+
 - This refers to breaking up a large data set into *partitions.*
 - Partitioning is also known as *sharding.*
 - Partitions are known as *shards* in MongoDB, Elasticsearch and SolrCloud, *regions* in Hbase, *tablets* in Bigtable, *vnodes* in Cassandra and Riak, and *vBucket* in Couchbase.
@@ -69,7 +70,7 @@ When we have a suitable hash function for keys, each partition can be assigned a
 
 A good hash function takes skewed data and makes it uniformly distributed. The partition boundaries can be evenly spaced or chosen pseudo-randomly (with the latter being sometimes known as *consistent hashing)*.
 
-* * *
+----
 
 *Aside copied from book:*
 
@@ -79,7 +80,7 @@ As we shall see in “Rebalancing Partitions”, this particular approach actual
 
 Kleppmann, Martin. Designing Data-Intensive Applications (Kindle Locations 5169-5174). O'Reilly Media. Kindle Edition.
 
-* * *
+----
 
 This approach has the downside that we lose the ability to do efficient range queries. Keys that were once adjacent are now scattered across all the partitions, so sort order is lost.
 
@@ -143,6 +144,8 @@ If we partition by *hash mod n* where n is the number of nodes, we run the risk 
 
 Next we'll discuss approaches that don't move data around more than necessary.
 
+----
+
 **Fixed Number of Partitions**
 
 This approach is fairly simple. It involves creating more partitions than nodes, and assigning several partitions to each node.
@@ -155,6 +158,8 @@ This approach is used in Elasticsearch (where the number of primary shards is fi
 
 With this approach, it's imperative to choose the right number of partitions.
 
+----
+
 **Dynamic partitioning**
 
 In this rebalancing strategy, the number of partitions dynamically adjusts to fit the size of the data. This is especially useful for databases with key range partitioning, as a fixed number of partitions with fixed boundaries can be inconvenient if not configured correctly at first. All the data could end up on one node, leaving the other empty.
@@ -166,6 +171,8 @@ Conversely, if lots of data is deleted and a partition shrinks below some thresh
 An advantage of this approach is that the number of partitions adapts to the total data volume. If there's only a small amount of data, a small number of partitions is sufficient, so overheads are small.
 
 A downside of this approach though is that an empty database starts off with a single partition, since there's no information about where to draw the partition boundaries. While the data set is small, all the writes will be processed by a single node while the others sit idle. Some databases like Hbase and MongoDB mitigate this by allowing an initial set of partitions to be configured on an empty database.
+
+----
 
 **Partitioning proportionally to nodes**
 
@@ -191,11 +198,15 @@ There's an open question that remains: when a client makes a request, how does i
 
 This is an instance of the general problem of *service discovery i.e. locating things over a network.* This isn't just limited to databases, any piece of software that's accessible over a network has this problem.
 
+---- 
+
 There are different approaches to solving this problem on a high level:
 
 - Allow clients to contact any node (e.g. via a round-robin load balancer). If the node happens to own the partition to which the request applies, it can handle the request directly. Otherwise, it'll forward it to the relevant node.
 - Send all requests from clients to a routing tier first, which determines what node should handle what request and forwards it accordingly. This routing tier acts as a partition-aware load balancer.
 - Require that clients be aware of the partitioning and assignment of partitions to nodes.
+
+----
 
 In all approaches, it's important for there to be a *consensus* among all the nodes about which partitions belong to which nodes, especially as we tend to rebalance often.
 
