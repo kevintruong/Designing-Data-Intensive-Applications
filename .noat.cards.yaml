@@ -1,0 +1,12 @@
+type: noatcards
+contents:
+  - file: ./Chapter_1_Reliable,_Scalable_and_Maintainable_Ap.md
+  - file: ./Chapter_2_Data_Models_and_Query_Languages.md
+  - file: ./Chapter_3_Storage_and_Retrieval.md
+  - file: ./Chapter_4_Encoding_and_Evolution.md
+  - file: ./Chapter_5_Replication.md
+  - file: ./Chapter_6_Partitioning.md
+  - file: ./Chapter_7_Transactions.md
+  - file: ./Chapter_8_The_Trouble_with_Distributed_Systems.md
+  - file: ./Chapter_9_Consistency_and_Consensus_(Part_One).md
+  - file: ./Chapter_9_Consistency_and_Consensus_(Part_Two).md
