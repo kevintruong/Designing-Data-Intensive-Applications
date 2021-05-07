@@ -111,6 +111,8 @@ If secondary indexes are involved though, this becomes more complex since they u
 
 Many key value stores like Hbase and Voldermort have avoided secondary indexes because of their complexity, but some like Riak have started adding them because of their usefulness for data modelling.
 
+----
+
 Secondary indexes are the bread & butter of search servers like Elasticsearch and Solr though. However, a challenge with secondary indexes is that they do not map neatly to partitions. Two main approaches to partitioning a database with secondary indexes are:
 
 - Document-based partitioning and

@@ -60,6 +60,8 @@ Nowadays, many internet services need high availability. It's not acceptable to 
 
 We sometimes like to assume that faults are rare and then don't account for them, but we must design with fault tolerance in mind.
 
+----
+
 Building a reliable system from unreliable components is not a unique idea to distributed systems, and is used in other areas as well. E.g.:
 
 - In information theory, the idea is to have reliable communication over an unreliable channel. We achieve this using error correcting codes.
@@ -70,6 +72,8 @@ Note that even though a system can be more reliable than the parts that it's mad
 ### Unreliable Networks [#](#unreliable-networks)
 
 As stated earlier, this book focuses on shared-nothing systems which communicate with each other via a network. The advantage of this approach is that it is comparatively cheap, as it requires no special hardware. We can have a bunch of regular machines as part of the system.
+
+----
 
 Note that the internet and most internal networks in datacenters are *asynchronous packet networks.* This means that: one node can send a message to another node, but have no guarantee about when the message will arrive, or whether the message will actually arrive at all. Unfortunately, with this approach, many things could go wrong:
 
@@ -96,6 +100,8 @@ It's important to automatically detect network faults, as they might be linked t
 - A load balancer can stop sending requests to a dead node.
 - A new follower can be promoted to a leader if the leader fails in a single-leader replication.
 
+----
+
 Due to the uncertainty about the network, it's difficult to tell whether a node is working or not. There are some specific ways to tell though, such as:
 
 - If the machine on which the node is running is reachable, but no process is listening on the destination port (e.g. because the process crashed), the OS will close or refuse TCP connections. However, if the node crashed while processing the request, there's no way of knowing how much data was processed by the remote node.
@@ -107,6 +113,8 @@ Due to the uncertainty about the network, it's difficult to tell whether a node 
 We have mentioned that timeouts are often used to detect a fault. However, there is no simple answer too how long a timeout should be. It simply depends.
 
 With a long timeout, it means there can be a wait until a node is declared dead. This means users will have to wait a while or see error messages.
+
+----
 
 On the other hand, a short timeout means that nodes can be declared dead prematurely, even when it only suffers a temporary breakdown (e.g. due to a load spike on the node or the network). There are downsides of declaring a node dead prematurely:
 
@@ -135,6 +143,8 @@ TCP is a reliable network transmission protocol while UDP is unreliable. It mean
 
 Any messages not acknowledged will be retransmitted in TCP.
 
+----
+
 UDP is used in latency-sensitive applications like videoconferencing and Voice over IP, where there's less tolerance for delays. In UDP, delayed data is probably worthless so it does not try to retransmit it. E.g. in phone calls, instead of retransmitting, it simply fills the missing packet's time slot with silence. The retry happens at the human layer: "Could you please repeat that please?".
 
 In essence, timeouts should typically be chosen experimentally: measure the distribution of network round trip times over an extended period, and over many machines to determine the expected variability of delays.
@@ -154,6 +164,8 @@ The way it works is that:
 - This network is synchronous, and it does not suffer from queueing, since the required amount of space for the call has already been reserved. Because there is no queueing, it has a *bounded delay.*
 
 Note that this approach differs from a TCP connection. While there is a fixed amount of reserved bandwidth here that no one else can use while the circuit is established, TCP packets will typically grab whatever network bandwidth is available.
+
+----
 
 Datacenter networks and the internet make use of the TCP approach of packet switching rather than establishing circuits, because they are optimizing for *bursty traffic.* With an audio or video call where the number of bits transferred per second is fairly constant, the traffic through the internet is unpredictable. We could be requesting a web page, or sending an email, or transferring a file etc. The goal is to just complete it as quickly as possible.
 
@@ -212,6 +224,8 @@ While clocks may seem simple and straightforward, they have a good number of pit
 - A day may not exactly have 86400 seconds
 - The time on a node may differ from the time on another.
 
+----
+
 Like with unreliable networks, robust software must be prepared to deal with incorrect clocks. Dealing with incorrect clocks can be even trickier because the problems caused by this can easily go unnoticed. A faulty CPU or misconfigured network is easier to detect, as the system would not work at all. However, for a defective clock, things will generally look fine. We're more likely to experience silent and subtle data loss than a dramatic crash.
 
 Therefore, if a software requires synchronized clocks, it's essential to monitor the clock offsets between all machines. A node whose clock drifts too far from the others should be labelled as a dead node and removed from the cluster.
@@ -223,6 +237,8 @@ Time-of-day clocks are commonly used for ordering events in some systems and the
 - Writes can mysteriously disappear.
 - It's impossible to distinguish between concurrent writes and causal writes (where one write depends on another)
 - Two nodes can independently generate writes with the same timestamp.
+
+----
 
 *Q*: Could NTP synchronization be made accurate enough that such incorrect orderings cannot occur?
 
@@ -242,6 +258,8 @@ For a distributed database though, it is more difficult to coordinate a monotoni
 
 If we didn’t have uncertainty about clock accuracy, the timestamps from the synchronized time-of-day clocks would be suitable as transaction IDs as later transactions will have a higher timestamp.
 
+----
+
 However, Google's Spanner implements snapshot isolation across datacenters this way:
 
 *Spanner implements snapshot isolation across datacenters in this way. It uses the clock’s confidence interval as reported by the TrueTime API, and is based on the following observation: if you have two confidence intervals, each consisting of an earliest and latest possible timestamp (A = \[Aearliest, Alatest\] and B = \[Bearliest, Blatest\]), and those two intervals do not overlap (i.e., Aearliest < Alatest < Bearliest < Blatest), then B definitely happened after A — there can be no doubt. Only if the intervals overlap are we unsure in which order A and B happened.*
@@ -256,12 +274,16 @@ To keep the wait time as small as possible, Google uses a GPS receiver in each d
 
 A node in a distributed system must assume that its execution can be paused for a significant amount of time at any point, even in the middle of a function. When this pause happens, the rest of the system keeps moving and may declare the paused node dead because it's not responding. This paused node may eventually continue running, without noticing that it was asleep until it checks the clock later.
 
+----
+
 A distributed system must tailor for these pauses which can be caused by:
 
 - Garbage collectors which stop all running threads. *I've experienced this in an Elasticsearch cluster.*
 - In virtualized environments, a VM can be suspended and resumed e.g. for live migration of a VM from one host to another without a reboot. Suspending the VM means pausing the execution of all processes and saving memory contents to disk. Resuming it means restoring the memory contents and continuing execution.
 - On laptops, the execution of a process could be paused and resumed arbitrarily e.g. when a user closes their laptop lid.
 - IO operations could also lead to delays.
+
+----
 
 There's active research into limiting the impact of Garbage Collection pauses. Some of the options are:
 
@@ -316,6 +338,8 @@ If there's a risk that nodes may "lie" (e.g. by sending corrupted messages or fa
 
 Kleppmann, Martin. Designing Data-Intensive Applications (Kindle Locations 7812-7813). O'Reilly Media. Kindle Edition.
 
+----
+
 Dealing with Byzantine faults is relevant in specific circumstances like:
 
 - In an aerospace environment, data in a computer's memory may become corrupted due to radiation, leading it to respond to other nodes in unpredictable ways. The system has to be equipped to handle this to prevent plane crashes. Therefore, flight control systems must tolerate Byzantine faults.
@@ -369,6 +393,8 @@ Safety properties are informally defined as: *nothing bad happens*, while livene
 
 These informal definitions are subjective (what's good or bad, really) and it’s best not to read too much into them.
 
+----
+
 The actual definitions of safety and liveness are precise and mathematical:
 
 - *If a safety property is violated, we can point at a particular point in time at which it was broken (for example, if the uniqueness property was violated, we can identify the particular operation in which a duplicate fencing token was returned). After a safety property has been violated, the violation cannot be undone — the damage is already done.*
@@ -387,9 +413,3 @@ While these theoretical abstractions are useful, reality must also be considered
 Proving the correctness of an algorithm does not mean that the implementation on a real system will always behave correctly. However, theoretical analysis is still a good first step because it can uncover problems that may remain hidden for a long time.
 
 Theoretical analysis and empirical testing are equally important.
-
-[learning-diary](https://timilearning.com/tags/learning-diary/) [distributed-systems](https://timilearning.com/tags/distributed-systems/) [ddia](https://timilearning.com/tags/ddia/)
-
-To get notified when I write something new, you can [subscribe](https://feeds.feedburner.com/timilearning) to the RSS feed.
-
-[← Home](https://timilearning.com/)

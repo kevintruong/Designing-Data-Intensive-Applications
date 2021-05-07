@@ -45,14 +45,20 @@ We discussed earlier how single-leader replication determines a total order of o
 
 Note that single-leader replication systems often only maintain ordering per partition. They do not have total ordering across all partitions. An example of such a system is Kafka. Total ordering across all partitions will require additional coordination.
 
+----
+
 *Total Order Broadcast* (or Atomic Broadcast) is a broadcast a protocol for exchanging messages between nodes. It requires that the following safety properties are always satisfied:
 
 - *Reliable delivery*: No messages are lost. A message delivered to one node must be delivered to all the nodes.
 - *Totally ordered delivery:* Messages are delivered to every node in the same order.
 
+----
+
 From Wikipedia: *The broadcast is termed "atomic" because it either eventually completes correctly at all participants, or all participants abort without side effects.*
 
 An algorithm for total order broadcast must ensure that these properties are always satisfied, even in the face of network or node faults. In the face of failures, the algorithm must keep retrying so that messages can get through when the network is repaired.
+
+----
 
 ***Q****: How can messages be delivered in the same order in multi-leader or leaderless replication systems?*
 
@@ -92,6 +98,8 @@ Linearizable writes are instantaneous writes, meaning that once a client has wri
 
 Imagine that we are building a system where each user has a unique username, and we want to deal with a situation where multiple users concurrently try to grab the same username. (*Aside:* Now, the scenario I have in my head is one in which these users can write to different replicas (think multiple leaders) concurrently. I imagine that in a single leader system, we would simply use the first successful operation).
 
+----
+
 To ensure linearizable writes in this system using total order broadcast:
 
 - Each node can append a message to the log indicating the username they want to claim.
@@ -120,6 +128,8 @@ The algorithm is this:
 
 *Kleppmann, Martin. Designing Data-Intensive Applications (Kindle Locations 9023-9024). O'Reilly Media. Kindle Edition.*
 
+----
+
 This way, we'll avoid race conditions on the integer and each message will have a unique sequence number.
 
 Something to note is that unlike Lamport timestamps, the numbers gotten from incrementing the linearizable register form a sequence that has no gaps. The sequence won't jump from 4 to 6. Therefore, if a node has delivered a message with a sequence number of 4 and receives an incoming message with a sequence number of 6, it must wait for message 5 before it can deliver message 6 (because messages must be delivered in the same order to all nodes, and if it delivers 6 before 5 to other nodes, it is likely breaking some order).
@@ -131,6 +141,8 @@ We'll discuss the consensus problem next.
 ## Distributed Transactions and Consensus [#](#distributed-transactions-and-consensus)
 
 Simply put, consensus means getting *several nodes to agree on something.* However, it turns out that this is not an easy problem to solve, and it is one of the fundamental problems in distributed computing.
+
+----
 
 Some situations where it is important for the nodes to agree include:
 
@@ -157,6 +169,8 @@ It's possible that the commit succeeds on some nodes and fails on other nodes, w
 - Some commit requests might get lost in the network, and may eventually abort due to a timeout, while other requests are successful.
 - Some nodes may crash before the commit record is fully written and then have to roll back on recovery, while other nodes successfully commit.
 
+----
+
 If some nodes commit a transaction while others abort it, the nodes will be in an inconsistent state. Note that a transaction commit on a node must be irrevocable. It cannot be retracted once it has been committed. The reason for this is that data becomes visible to other transactions once it has been committed by a transaction, and other clients may now rely on that data. Therefore, it's important that a node commits a transaction only when it is certain that all other nodes in the transaction will commit.
 
 #### Introduction to Two-phase commit [#](#introduction-to-two-phase-commit)
@@ -165,10 +179,14 @@ Two-phase commit (or 2PC) is an algorithm used for achieving atomic transaction 
 
 The key thing here is that the commit process is split into two phases: the *prepare* phase and the *actual commit* phase.
 
+----
+
 It achieves atomicity across multiple nodes by introducing a new component known as *the coordinator*. The coordinator can run in the same process as the service requesting the transaction or in an entirely different process. When the application is ready to commit a transaction, the two phases are as follows:
 
 1.  The coordinator sends a *prepare* request to all the nodes participating in the transaction, for which the nodes have to respond with essentially a 'YES' or 'NO' message.
 2.  If all the participants reply 'YES', then the coordinator will send a *commit* request in the second phase for them to actually perform the commit. However, if *any* of the nodes reply 'NO', the coordinator sends an *abort* request to all the participants.
+
+----
 
 In case it's still not clear how this protocol ensures atomicity while one-phase commit across multiple nodes does not, note that there are two essential "points of no return":
 
@@ -181,9 +199,13 @@ If any of the *prepare* requests fails or times out during a 2PC, the coordinato
 
 If the coordinator fails before it can send a prepare request, a participant can safely abort the transaction. However, once a participant has received a prepare request and voted "YES", it can no longer abort by itself. It has to wait to hear from the coordinator about whether or not it should commit the transaction. The *downside* of this is that if the coordinator crashes or the network fails after a participant has responded "YES", the participant can do nothing but wait. In this state, it is said to be *in doubt* or *uncertain.*
 
+----
+
 The reason why a participant has to wait for the coordinator in the event of a failure is that it does not know whether the failure extends to all participants or just itself. It's possible that the network failed after the commit request was sent to one of the participants. If the *in doubt participants* then decide to abort after a timeout due to not receiving from the coordinator, it will leave the database in an inconsistent state.
 
 In principle, the in doubt participants could communicate among themselves to find out how each participant voted and then come to an agreement, but that is not part of the 2PC protocol.
+
+----
 
 This possibility of failure is why the coordinator must write its decision to a transaction log on disk before sending the request to the participants. When it recovers from a failure, it can read its transaction log to determine the status of all in-doubt transactions. Transactions without a commit record in the coordinator's log are aborted. In essence, the commit point of 2PC is a regular single-node atomic commit on the coordinator.
 
@@ -192,6 +214,8 @@ This possibility of failure is why the coordinator must write its decision to a 
 Two-phase commit is referred to as a *blocking* atomic commit protocol because of the fact that it can get stuck waiting for the coordinator to recover.
 
 An alternative to 2PC that has been proposed is an algorithm called *three-phase commit (3PC).* The idea here is that it assumes a network with bounded delays and nodes with bounded response times. This means that when a delay exceeds that bound, a participant can safely assume that the coordinator has crashed.
+
+----
 
 However, most practical systems have unbounded network delays and process pauses, and so it cannot guarantee atomicity. If we wrongly declare the coordinator to be dead, the coordinator could resume and end up sending commit or abort requests, even when the participants have already decided. *(**Q**: I wonder if this is something that can be avoided by ensuring that once a coordinator has been declared dead for a particular transaction, it cannot come back and send requests? Might be possible through some form of sequence numbers).*
 
@@ -203,6 +227,8 @@ Distributed transactions, especially those implemented with two-phase commit, ar
 
 However, despite these limitations, it's useful to examine them in more detail as there are lessons that can be learned from them.
 
+----
+
 There are two types of distributed transaction which often get conflated:
 
 - *Database-internal distributed transactions:* This refers to transactions performed by a distributed database that spans multiple replicas or partitions. VoltDB and MySQL Cluster's NDB storage engine support such transactions. Here, all the nodes participating in the transaction are running the same database software.
@@ -213,6 +239,8 @@ There are two types of distributed transaction which often get conflated:
 With heterogeneous transactions, we can integrate diverse systems in powerful ways. For example, we can perform a transaction that spans across a message queue and a database. Say we want to acknowledge a message from a queue as processed if and only if the transaction for processing the message was successfully committed, we could perform this using distributed transactions. This can be implemented by atomically committing the message acknowledgment and the database writes in a single transaction.
 
 If the transaction fails and the message is not acknowledged, the message broker can safely redeliver the message later.
+
+----
 
 An advantage of atomically committing a message together with the side effects of its processing is that it ensures that the message is *effectively* processed exactly once. If the transaction fails, the effects of processing the message can simply be rolled back.
 
@@ -227,6 +255,8 @@ XA (*eXtended Architecture)* is a standard for implementing two-phase commit acr
 XA is a C API for interacting with a transaction coordinator, but bindings for the API exist in other languages.
 
 It assumes that communication between your application and the participant databases/messaging services is done through a network driver (like JDBC) or a client library which supports XA. If the driver does support XA, it will call the XA API to find out whether an operation should be part of a distributed transaction - and if so, it sends the necessary information to the participant database server. The driver also exposes callbacks needed by the coordinator to interact with the participant, through which it can ask a participant to prepare, commit, or abort.
+
+----
 
 The transaction coordinator is what implements the XA API. The coordinator is usually just a library that's loaded into the same process as the application issuing the transaction. It keeps track of the participants involved in a transaction, their responses after asking them to prepare, and then uses a log to keep track of its commit/abort decision for each transaction.
 
@@ -254,6 +284,8 @@ In simple terms, consensus means getting several nodes to agree on something. Fo
 
 In formal terms, we describe the consensus problem like this: One or more nodes may *propose* values, and the role of the consensus algorithm is to *decide* on one of those values. In the case of booking a meeting room, each node handling a user request may propose the username of the user making the request, and the consensus algorithm will decide on which user will get the room.
 
+----
+
 A consensus algorithm must satisfy the following properties:
 
 - *Uniform agreement:* No two nodes decide differently.
@@ -269,6 +301,8 @@ The termination property is what ensures fault tolerance in consensus-based syst
 
 What the termination property means is that a consensus algorithm cannot sit idle and do nothing forever i.e. it must make progress. If some nodes fail, the other nodes must reach a decision. [Note that termination is a liveness property, while the other three are safety properties.](https://timilearning.com/posts/ddia/part-two/chapter-8/#safety-and-liveness)
 
+----
+
 The consensus system model assumes that when a node "crashes", it disappears and never comes back. That means that any algorithm which must wait for a node to recover will not satisfy the termination property. However, note that this is subject to the assumption that fewer than half of the nodes crashed.
 
 Note that the distinction between the safety and the liveness properties means that even if the termination property is not met, it cannot corrupt the consensus system by causing it to make invalid decisions. In addition, most consensus algorithms assume that there are no [Byzantine faults](https://timilearning.com/posts/ddia/part-two/chapter-8/#byzantine-faults). This means that if a node is Byzantine-faulty, it may break the safety properties of the protocol.
@@ -277,10 +311,14 @@ Note that the distinction between the safety and the liveness properties means t
 
 The most popular fault-tolerant consensus algorithms are Paxos, Zab, Raft, and Viewstamped Replication. However, most of these algorithms do not directly make use of the formal model described above i.e. proposing and deciding on a single value, while satisfying the liveness and safety properties. What these algorithms do is that they decide on a *sequence* of values, which makes them *total order broadcast* algorithms.
 
+----
+
 Recall from the discussion earlier that the following properties must be met for total order broadcast:
 
 - Messages must be delivered to all nodes in the same order.
 - No messages are lost.
+
+----
 
 If we look closely at these properties, total order broadcast can be seen as performing several rounds of consensus as all the nodes have to *agree* on what message goes next in the total order sequence. Each consensus decision can be seen as corresponding to one message delivery.
 
@@ -308,9 +346,15 @@ The consensus protocols discussed above all use a leader internally. However, a 
 
 Whenever the current leader is thought to be dead, the nodes start a vote to elect a new leader. In each election round, the epoch number is incremented. If we have two leaders belonging to different epochs, the one with the higher epoch number will prevail.
 
+
+----
+
+
 Before a leader can decide anything, it must be sure that there is no leader with a higher epoch number than it. It does this by collecting votes from a *quorum* (typically the majority, but not always) of nodes for every decision that it wants to make. A node will vote for a proposal *only* if it is not aware of another leader with a higher epoch.
 
 Therefore, we have two voting rounds in consensus protocols: one to elect a leader, and another to vote on a leader's proposal. The important thing is that there must be an overlap in the quorum of nodes that participate in both voting rounds. If a vote on a proposal succeeds, then at least one of the nodes that voted for it must have also been voted in the most recent leader election.
+
+----
 
 The biggest differences between 2PC and fault-tolerant consensus algorithms are that the coordinator in 2PC is not elected, and the latter only requires votes from a majority of nodes unlike in 2PC where all the participants must say "YES". In addition, consensus algorithms define a recovery process to get the nodes into a consistent state after a new leader is elected. These differences are what make consensus algorithms more fault-tolerant.
 
@@ -328,6 +372,8 @@ Zookeeper and etcd are typically described as "distributed key-value stores" or 
 
 However, it's important to note that these systems are not designed to be used as a general-purpose database. Zookeeper and etcd are designed to hold small amounts of data *in memory,* all of your application's data cannot be stored there. This small amount of data is then replicated across all the nodes using a *fault-tolerant total order broadcast algorithm.*
 
+----
+
 Some of the features provided by these services are:
 
 - *Linearizable atomic operations*: Zookeeper can be used to implement distributed locks using an atomic compare-and-set operation. If several nodes concurrently try to obtain a lock on a row, it can help to guarantee that only one of them will succeed and the operation will be atomic and linearizable.
@@ -340,6 +386,8 @@ Note that only the linearizable atomic operations here require consensus, but th
 #### Allocating work to nodes [#](#allocating-work-to-nodes)
 
 When new nodes join a partitioned cluster, some of the partitions need to be moved from existing nodes to the new ones in order to rebalance the load. Similarly, when nodes fail or are removed from the cluster, the partitions that they held have to be moved to the remaining nodes. Zookeeper can help to achieve tasks like this through the use of atomic operations, change notifications and ephemeral nodes.
+
+----
 
 An important thing to note is that Zookeeper typically manages data that is quite *slow-changing*:
 
@@ -358,11 +406,3 @@ The main idea is that services will register their network endpoints in a servic
 ## Conclusion [#](#conclusion)
 
 This will be the last set of notes I'll post from the book in a while. The last section of the book is on "Derived Data" and is a lot more practical than the theory we have discussed so far. In the meantime, I intend to post another set of notes from [this](https://pdos.csail.mit.edu/6.824/index.html) course which I will be starting soon.
-
-*Last updated on 19-06-2020 to fix a few typos.*
-
-[distributed-systems](https://timilearning.com/tags/distributed-systems/) [learning-diary](https://timilearning.com/tags/learning-diary/) [ddia](https://timilearning.com/tags/ddia/)
-
-To get notified when I write something new, you can [subscribe](https://feeds.feedburner.com/timilearning) to the RSS feed.
-
-[← Home](https://timilearning.com/)

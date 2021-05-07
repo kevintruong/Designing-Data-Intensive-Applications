@@ -54,11 +54,17 @@ If one client's read returns a new value, all subsequent reads must also return 
 
 *Linearizability:* This is a recency guarantee on reads and writes of a single object. This guarantee does not group multiple operations together into a transaction (meaning it cannot protect against a problem like *write skew*, where a transaction makes a write based on a value it read earlier that has now been updated by another concurrently running transaction).
 
+----
+
 *Serializability:* This is an isolation property of transactions that guarantees that transactions behave the same as if they had executed in *some* serial order i.e. each transaction is completed before the next one starts. There is no guarantee on *what* serial order these transactions appear to run in, all that matters is that it is a serial order.
+
+----
 
 When a database provides both serializability and linearizability, the guarantee is known as *strict serializability* or *strong one-copy serializability.*
 
 [Two Phase-Locking](https://timilearning.com/posts/ddia/part-two/chapter-7/#two-phase-locking-%282pl%29) and [Actual Serial Execution](https://timilearning.com/posts/ddia/part-two/chapter-7/#actual-serial-execution) are implementations of serializability that are also linearizable. However, serializable snapshot isolation is not linearizable, since a transaction will be reading values from a consistent snapshot.
+
+----
 
 **Q**: If serializable snapshot isolation is well implemented by ensuring that it detects writes in a transaction that may affect prior reads (from a consistent snapshot) or that it detects stale reads, wouldn't that make it linearizable as one of these transactions will be aborted and will thus preserve the recency guarantee?
 
@@ -90,20 +96,32 @@ However, note that some of these constraints can be treated loosely and are not 
 
 Seeing that linearizability means the system behaves as if there is only one copy of the data, the simplest way to implement it will be to actually have just one copy of the data. However, that won't be fault-tolerant if the node that has the single copy becomes unavailable.
 
+----
+
 Since replication is the most common way to make a system fault-tolerant, we'll compare different replication methods here and discuss whether they can be made linearizable.
 
 - *Single-leader replication (potentially linearizable):* If we make every read from the leader or from synchronously updated followers, the system has the potential to be linearizable. However, there is no absolute guarantee as the system can still be non-linearizable either by design (because it uses snapshot isolation) or due to concurrency bugs.
     
     Using the leader for reads also implies that there is an assumption that we'll always know who the leader is. Issues like split-brain can mean that a single-leader system can violate linearizability.
     
+----
+
 - *Multi-leader replication* (*not linearizable):* These systems are generally not linearizable since they can process writes concurrently, and the writes are typically asynchronously replicated to other nodes. It means that clients can view different values of a register (single object) if they read from different nodes.
     
+----
+
 - *Consensus Algorithms* *(linearizable)**:*** We haven't dealt with this yet but these systems are typically linearizable. They are similar to single-leader replication, but they contain additional measures to prevent stale replicas and split-brain. As a result, consensus protocols are used to implement linearizable storage safely. Zookeeper and Etcd work this way.
     
+----
+
 - *Leaderless replication* (*probably not linearizable)*: Recall that these systems typically require quorum reads and writes where w + r > n. While these can be linearizable, they are almost certainly non-linearizable under certain circumstances, like when "Last write wins" is used as the conflict resolution method based on time-of-day clocks. These are typically non-linearizable because we know that clock timestamps are not guaranteed to be consistent with the actual ordering of events due to *clock skew.* Another circumstance where non-linearizability is almost guaranteed is when [sloppy quorums](https://timilearning.com/posts/ddia/part-two/chapter-5/#sloppy-quorums-and-hinted-handoff) are used.
     
+----
+
 
 Even with strict quorums, there is the possibility of non-linearizability due to concurrency bugs. If we have 3 nodes in a cluster and set w = 3 and r = 2, the quorum condition is met. However, if a client is writing to 3 nodes and two clients concurrently read from 2 of those 3 nodes, they may see different values for a register as a result of network delays in writing to all the nodes.
+
+----
 
 *Question: This is something that serializable transaction isolation will prevent right? Because ideally the write to those 3 nodes will be in its own transaction, and no other transaction will be able to see it in a halfway state.*
 
@@ -125,6 +143,8 @@ The CAP theorem is a popular theorem in Distributed Systems that is often misund
 
 - If an application *requires* linearizability and some replicas are disconnected from other replicas due to a network problem, then those replicas cannot process requests while they are disconnected: the replicas must either wait until the network problem is fixed or return an error. These replicas are then *unavailable.*
 - If the application *does not require* linearizability, it can be written in a way that each replica can process requests independently even when disconnected from other replicas. Therefore, the application can remain available in the face of a network problem, but the behaviour is not *linearizable.*
+
+----
 
 In the original definition of the CAP Theorem, the behaviour described for Consistency is linearizability. Availability means that any non-failing node must return a response that contains the results of the requested work i.e., not a 500 error or a timeout message.
 
@@ -172,17 +192,23 @@ If elements are in a *total order,* it means that they can always be compared. T
 
 With a *partial order,* we can sometimes compare the elements and say which is bigger or smaller, but in other cases the elements are incomparable. For example, mathematical sets are not totally ordered. You can't compare {*a, b}* with {*b, c}*.
 
+----
+
 This difference between total order and a partial order is reflected when we compare Linearizability and Causality as consistency models:
 
 *Linearizability*
 
 We have a *total order* of operations in a linearizable system. If the system behaves as if there is only one copy of the data, and every operation is atomic (meaning we can always point to before and after that operation), then we can always say which operation happened first.
 
+----
+
 *Causality*
 
 Two operations are ordered if they are causally related (i.e. we can say which happened before the other), but are incomparable if they are concurrent. With concurrent operations, we can't say that one happened before the other.
 
 This definition means that *there is no concurrency in a linearizable database*. We can always say which operations happened before the other. (**Q:** Is it that there is no concurrency or that it just appears that way? **A:** *I think it's the latter given that implementations of two-phase locking can be linearizable***)**
+
+----
 
 The version history of a system like Git is similar to a graph of causal dependencies. One commit often happens after another, but sometimes they branch off, and we create merges when those concurrently created commits are combined. *I guess why Git is an appropriate example here despite the fact that we have timestamps is that Git uses the system clock for timestamps, which can be inaccurate.*
 
@@ -222,6 +248,8 @@ In a multi-leader or leaderless database, generating sequence numbers for operat
 - A timestamp from a time-of-day can be attached to each operation. We've [discussed](https://timilearning.com/posts/ddia/part-two/chapter-8/#timestamps-for-ordering-events.) why this is unreliable previously*.*
 - We can preallocate blocks of sequence numbers. E.g node A could claim a block of numbers from 1 to 1000, and node B could claim the block from 1001 to 2000.
 
+----
+
 However, while these options perform better than pushing all operations through a single leader which increments the counter, the problem with them is that they these sequence number are *not consistent with causality.* They do not capture ordering across different nodes *(Do we have* [*sequential consistency*](https://jepsen.io/consistency/models/sequential) *with these though?).* If we used the third option, for example, an operation numbered at 1100 on node B could have happened before operation 50 on node A if they process a different number of operations per second. There is no way to capture that using these methods.
 
 ##### Lamport Timestamps [#](#lamport-timestamps)
@@ -231,6 +259,8 @@ This is one of the most important topics in the field of distributed systems. It
 The idea here is that each node has a unique identifier, and also keeps a counter of the number of operations it has processed. The Lamport timestamp is then a pair of (counter, nodeID). Multiple nodes can have the same counter value, but including the node ID in the timestamp makes it unique.
 
 Lamport timestamps provide a total ordering: if there are two timestamps, the one with the greater counter value is the greater timestamp; if the counter values are the same, then we pick the one with the greater node ID as the greater timestamp.
+
+----
 
 What makes Lamport timestamps consistent with causality is the following:
 
@@ -248,6 +278,8 @@ Figure 1 - Lamport Timestamps Illustration.
 
 In this figure, client A sends its requests to nodes 1 and 2, incrementing the counter of each one in the process. When client B sends its request to node 2, the current counter of the node is 2 which is greater than the maximum value seen by client B, and so it increases the counter to 3.
 
+----
+
 I believe the Lamport timestamp ordering for the operations will be:
 
 (1,1) -> (2, 2) -> (3, 1) -> (3,2)
@@ -255,6 +287,8 @@ I believe the Lamport timestamp ordering for the operations will be:
 This ordering showcases a limitation of Lamport timestamps. Even though operation (3,2) appears to complete before (3,1), the ordering does not reflect that. The fact that those two have the same counter value means that they are concurrent and the operations do not know about each other, but Lamport timestamps must enforce a total ordering. With the ordering from Lamport timestamps, *you cannot tell whether two operations are concurrent or causally dependent.*
 
 *Version Vectors* can help distinguish whether two operations are concurrent or whether one causally depends on the other, but Lamport timestamps have the advantage that they are more compact.
+
+----
 
 **Note**
 
@@ -277,11 +311,3 @@ For example, if two users concurrently try to create an account with the same us
 It's not enough to have a total ordering of operations, it's also important to know *when* the order is finalized i.e. what that order is at each point in time.
 
 In the second part of these notes, we'll look at ways to solve the challenge of knowing the order of operations at each point in time.
-
-*Last updated on 19-06-2020 to point to a subsequent post on Consistency Models and also fix some embarrassing typos.*
-
-[distributed-systems](https://timilearning.com/tags/distributed-systems/) [learning-diary](https://timilearning.com/tags/learning-diary/) [ddia](https://timilearning.com/tags/ddia/)
-
-To get notified when I write something new, you can [subscribe](https://feeds.feedburner.com/timilearning) to the RSS feed.
-
-[← Home](https://timilearning.com/)
